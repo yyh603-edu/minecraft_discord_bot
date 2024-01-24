@@ -25,16 +25,23 @@ class Droplet:
     def update(self):
         url = "https://api.digitalocean.com/v2/droplets?page=1&per_page=2"
         response = requests.get(url, headers = HEADERS)
+        # print(response.status_code)
         content = json.loads(response.content)
-        if not content.get("droplets"):
+        # print(content)
+        # print(len(content["droplets"]))
+        if len(content["droplets"]) == 1:
             self.id = ""
             self.status = ""
             self.ip_addr = ""
             return
         else:
-            self.id = content["droplets"][0]["id"]
-            self.status = content["droplets"][0]["status"]
-            for address in content["droplets"][0]["networks"]["v4"]:
+            tarserver = content["droplets"][0]
+            for server in content['droplets']:
+                if server['name'] != "minecraft-discord-bot":
+                    tarserver = server
+            self.id = tarserver['id']
+            self.status = tarserver['status']
+            for address in tarserver["networks"]["v4"]:
                 if address["type"] == "private":
                     continue
                 else:
@@ -61,6 +68,7 @@ class Droplet:
         )
         payload = {"type": "shutdown"}
         response = requests.post(url, headers = HEADERS, data = json.dumps(payload))
+        print(response.status_code)
         content = json.loads(response.content)
         action = content["action"]["id"]
         url = "https://api.digitalocean.com/v2/actions/" + str(action)
@@ -80,6 +88,7 @@ class Droplet:
              + str(self.get_id())
              + "/actions"
         )
+        print("server close")
         payload = {
             "type": "snapshot",
             "name": "yyhsnapshot_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
@@ -99,8 +108,10 @@ class Droplet:
             else:
                 counter += 1
                 time.sleep(5)
+        print('snapshot success')  
         url = "https://api.digitalocean.com/v2/droplets/" + str(self.get_id())
         response = requests.delete(url, headers = HEADERS)
+        print(response.status_code)
         if response.status_code == 204:
             return True
         else:
@@ -120,7 +131,10 @@ class Snapshot:
             self.id = ""
             return
         else:
-            self.id = content["snapshots"][-1]["id"]
+            # tar = content["snapshots"][0]
+            for snapshot in content["snapshots"]:
+                if 'yyh' not in snapshot["name"]:
+                    self.id = snapshot["id"]
             return
     def get_id(self):
         self.update()
@@ -147,6 +161,7 @@ droplet = Droplet()
 snapshot = Snapshot()
 
 def get_server():
+    print(droplet.get_address())
     try:
         server = JavaServer.lookup(droplet.get_address())
     except Exception as e:
@@ -164,7 +179,9 @@ class server_operation(Cog_Extension):
 
     @commands.command()
     async def start(self, ctx):
+        print("!start")
         if droplet.get_id():
+            print("exist")
             try:
                 server = get_server()
                 status = server.status()
@@ -176,7 +193,11 @@ class server_operation(Cog_Extension):
                 await ctx.send(f"發生問題 <@{719096615465517058}> " + e)
                 return
         else:
-            success = snapshot.create_droplet()
+            try:
+              success = snapshot.create_droplet()
+            except Exception as e:
+                print(e)
+                return
             if success:
                 await ctx.send("伺服器正在開啟，請稍等")
                 counter = 1
@@ -200,12 +221,16 @@ class server_operation(Cog_Extension):
     
     @commands.command()
     async def stop(self, ctx):
+        print('!stop')
         if not droplet.get_id():
             await ctx.send("伺服器已經是關閉狀態")
         else:
             try:
+                print('test1')
                 server = get_server()
-                print(server.status().players.online)
+                print('test2')
+                print(server.status())
+                print('test3')
                 status = server.status()
                 if status.players.online:
                     await ctx.send("伺服器目前有玩家在玩")
